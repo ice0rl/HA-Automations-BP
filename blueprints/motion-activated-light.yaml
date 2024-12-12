@@ -17,7 +17,9 @@ blueprint:
       selector:
         target:
           entity:
-            domain: light
+            domain: 
+            - light
+            - switch
     no_motion_wait:
       name: "Wait time"
       description: "The time to wait before turning off the light after no movement is detected."
