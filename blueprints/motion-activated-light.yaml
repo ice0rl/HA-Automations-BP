@@ -9,7 +9,7 @@ blueprint:
       selector:
         entity:
           domain: binary_sensor
-          device_class: 
+          device_class:
             - motion
             - occupancy
     light_target:
@@ -17,9 +17,9 @@ blueprint:
       selector:
         target:
           entity:
-            domain: 
-            - light
-            - switch
+            domain:
+              - light
+              - switch
     no_motion_wait:
       name: "Wait time"
       description: "The time to wait before turning off the light after no movement is detected."
@@ -46,9 +46,9 @@ blueprint:
       description: "This sensor is used only with the Meteo managment option to determine if the weather is sunny or not (useful if you are in a room usually dark in case of bad weather condition"
       selector:
         entity:
-          domain: 
+          domain:
             - weather
-          multiple: false 
+          multiple: false
       default: "weather.home"
     sunset_start_hh:
       name: "Pre-sunset hours activation"
@@ -66,7 +66,7 @@ blueprint:
         number:
           min: 0
           max: 59
-          unit_of_measurement: minutes  
+          unit_of_measurement: minutes
       default: 0
     sunrise_start_hh:
       name: "Post-sunrise hours activation"
@@ -84,7 +84,7 @@ blueprint:
         number:
           min: 0
           max: 59
-          unit_of_measurement: minutes   
+          unit_of_measurement: minutes
       default: 0
     timeout:
       name: "Deactivation timeout?"
@@ -93,7 +93,7 @@ blueprint:
         number:
           min: -1
           max: 60
-          unit_of_measurement: minutes  
+          unit_of_measurement: minutes
       default: 5
 # If motion is detected within the delay,
 # we restart the script.
@@ -107,12 +107,12 @@ trigger:
   to: "on"
 variables:
   # Make input my_input available as a script level variable
-  dusk_start_hour: !input sunset_start_hh 
+  dusk_start_hour: !input sunset_start_hh
   dusk_start_minute: !input sunset_start_mm
-  rising_start_hour: !input sunrise_start_hh 
+  rising_start_hour: !input sunrise_start_hh
   rising_start_minute: !input sunrise_start_mm
   use_weather: !input wheater_handling
-  sun_rising: >  
+  sun_rising: >
     {% if (states.sun.sun.state == "above_horizon") %}
         {{ states.sun.sun.last_changed }}
     {%- else -%}    
@@ -123,24 +123,40 @@ variables:
         {{ states.sun.sun.attributes.next_dusk }}
     {%- else -%}    
         {{ states.sun.sun.last_changed }}
-    {%- endif %}    
-  wheater_sensor: !input wheater_entity  
+    {%- endif %}
+  wheater_sensor: !input wheater_entity
   no_sunny_wheater: >
     {{ states(wheater_sensor) != 'sunny' and use_weather }}
+  light_entity: !input light_target
+  light_entity_id: "{{ light_entity.entity_id }}" # Entitäts-ID As String
+  light_prefix: "{{ light_entity_id.split('.')[0] }}" # extract entitytype  (e.g. light, switch)
 condition:
   condition: or
   conditions:
-      - condition: template
-        value_template: !input no_sunset_handling 
-      - condition: template
-        value_template: "{{ no_sunny_wheater }}"
-      - condition: and
-        conditions:
-          -  "{{ as_timestamp(now()) >= ((as_timestamp(sun_dusk) - dusk_start_hour*3600 - dusk_start_minute*60) )}}"
-          -  "{{ as_timestamp(now()) < ((as_timestamp(sun_rising) + rising_start_hour*3600 + rising_start_minute*60) )}}"
+    - condition: template
+      value_template: !input no_sunset_handling
+    - condition: template
+      value_template: "{{ no_sunny_wheater }}"
+    - condition: and
+      conditions:
+        - "{{ as_timestamp(now()) >= ((as_timestamp(sun_dusk) - dusk_start_hour*3600 - dusk_start_minute*60) )}}"
+        - "{{ as_timestamp(now()) < ((as_timestamp(sun_rising) + rising_start_hour*3600 + rising_start_minute*60) )}}"
 action:
-  - service: light.turn_on
-    target: !input light_target
+  - choose:
+      # if entity is a light 
+      - conditions:
+          - condition: template
+            value_template: "{{ light_prefix == 'light' }}"
+        sequence:
+          - service: light.turn_on
+            target: !input light_target
+      # if entity is a switch
+      - conditions:
+          - condition: template
+            value_template: "{{ light_prefix == 'switch' }}"
+        sequence:
+          - service: switch.turn_on
+            target: !input light_target
   - wait_for_trigger:
       platform: state
       entity_id: !input motion_entity
@@ -152,5 +168,18 @@ action:
       seconds: 0
       milliseconds: 0
   - delay: !input no_motion_wait
-  - service: light.turn_off
-    target: !input light_target
+  - choose:
+      # if entity is a light 
+      - conditions:
+          - condition: template
+            value_template: "{{ light_prefix == 'light' }}"
+        sequence:
+          - service: light.turn_off
+            target: !input light_target
+      # if entity is a switch
+      - conditions:
+          - condition: template
+            value_template: "{{ light_prefix == 'switch' }}"
+        sequence:
+          - service: switch.turn_off
+            target: !input light_target
